@@ -1,0 +1,50 @@
+seed: 42
+device: cuda:0
+
+data:
+  manifest: data/processed/residual_manifest.json
+  yolo_dir: data/yolo
+  raw_dir: data/raw/ResiDual_Dataset
+
+splits:
+  train: 0.7
+  val: 0.15
+  test: 0.15
+
+model:
+  family: yolo
+  variant: yolo11n-cls
+  pretrained_weights: yolo11n-cls.pt
+  weights: artifacts/yolo/yolo11n-cls.pt
+  imgsz: 1280
+  class_names:
+    - Clean
+    - Contaminated
+
+training:
+  epochs: 50
+  batch_size: 8
+  learning_rate: 0.001
+  project: artifacts/yolo/runs
+  device: cuda:0
+
+inference:
+  device: cpu
+  imgsz: 1280
+  threshold: 0.5
+  aggregation: mean
+  max_frames: 12
+  show_activation: false
+
+evaluation:
+  reports_dir: artifacts/yolo_reports
+
+app:
+  title: PharmaInspect - YOLO11-cls
+
+vlm:
+  enabled: false
+  provider: null
+  model: null
+  api_key_env: PHARMAINSPECT_VLM_API_KEY
+  timeout_s: 30
