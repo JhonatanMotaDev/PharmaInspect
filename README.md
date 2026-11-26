@@ -1,4 +1,4 @@
-# PharmaInspect — pacote de reprodução
+# PharmaInspect: pacote de reprodução
 
 Branch `repro/minimal`: apenas o código e os documentos necessários para reproduzir o protocolo oficial de classificação de frascos farmacêuticos. A interface Streamlit, o módulo VLM e o mapa de ativação ficam no `main`.
 
