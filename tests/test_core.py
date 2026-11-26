@@ -22,9 +22,11 @@ from pharma_inspect.evaluation import (
     STRATEGIES,
     aggregate,
     apply_threshold,
+    cluster_bootstrap_intervals,
     compute_metrics,
     confusion_matrix,
     performance_metrics,
+    wilson_interval,
 )
 from pharma_inspect.pipeline import load_config
 from pharma_inspect.vlm import build_client
@@ -338,3 +340,23 @@ def test_train_classifier_passes_dataset_directory(tmp_path, monkeypatch):
     )
     assert captured["data"] == str(data_dir)
     assert Path(result["weights"]).is_file()
+
+
+def test_wilson_interval_is_not_degenerate_without_errors():
+    low, high = wilson_interval(24, 24)
+    assert 0.8 < low < 1.0 and high == 1.0
+    assert wilson_interval(0, 0) == [0.0, 1.0]
+    with pytest.raises(ValueError):
+        wilson_interval(5, 4)
+
+
+def test_cluster_bootstrap_is_reproducible_and_bounded():
+    truth = [0, 0, 1, 1, 1, 1]
+    pred = [0, 1, 1, 1, 1, 0]
+    groups = [0, 0, 1, 1, 2, 2]
+    first = cluster_bootstrap_intervals(truth, pred, groups, n_boot=200)
+    assert first == cluster_bootstrap_intervals(truth, pred, groups, n_boot=200)
+    for low, high in first.values():
+        assert 0.0 <= low <= high <= 1.0
+    with pytest.raises(ValueError):
+        cluster_bootstrap_intervals(truth, pred, groups[:-1])

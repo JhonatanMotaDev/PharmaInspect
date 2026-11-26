@@ -301,7 +301,7 @@ def render_test_report(config: dict[str, Any]) -> None:
     reports_dir = resolve_path(
         config.get("evaluation", {}).get("reports_dir", "artifacts/yolo_reports"), ROOT
     )
-    report_path = reports_dir / "test.json"
+    report_path = reports_dir / config.get("evaluation", {}).get("report_name", "test.json")
     if not report_path.is_file():
         st.info(
             "Relatório de teste ausente: rode scripts/evaluate_yolo.py no GPU externo "

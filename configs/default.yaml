@@ -2,8 +2,9 @@ seed: 42
 device: cuda:0
 
 data:
-  manifest: data/processed/residual_manifest.json
-  yolo_dir: data/yolo
+  manifest: data/dedup/manifest.json
+  dedup_manifest: data/dedup/MANIFEST.YAML
+  yolo_dir: data/dedup
   raw_dir: data/raw/ResiDual_Dataset
 
 splits:
@@ -33,11 +34,13 @@ inference:
   imgsz: 1280
   threshold: 0.5
   aggregation: mean
-  max_frames: 12
+  preprocessing: letterbox
+  max_frames: null
   show_activation: false
 
 evaluation:
   reports_dir: artifacts/yolo_reports
+  report_name: test.json
 
 app:
   title: PharmaInspect - YOLO11-cls

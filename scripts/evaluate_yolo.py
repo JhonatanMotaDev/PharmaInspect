@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -17,7 +18,9 @@ from pharma_inspect.data import binary_label
 from pharma_inspect.evaluation import (
     aggregate,
     apply_threshold,
+    cluster_bootstrap_intervals,
     compute_metrics,
+    metrics_intervals,
     performance_metrics,
     write_json_report,
 )
@@ -39,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default=None)
     parser.add_argument("--imgsz", type=int, default=None)
     parser.add_argument("--limit-sequences", type=int, default=None)
+    parser.add_argument("--n-bootstrap", type=int, default=1000)
     parser.add_argument("--output", default=None, help="Arquivo JSON de saída")
     return parser.parse_args()
 
@@ -62,10 +66,10 @@ def main() -> None:
     inference_config = config.get("inference", {})
     imgsz = args.imgsz if args.imgsz is not None else int(inference_config.get("imgsz", 1280))
     device = args.device or inference_config.get("device", "cpu")
-    max_frames_value = inference_config.get("max_frames", 12)
-    max_frames = int(max_frames_value) if max_frames_value is not None else 12
-    if imgsz <= 0 or max_frames <= 0:
-        raise ValueError("imgsz and max_frames must be positive")
+    max_frames_value = inference_config.get("max_frames")
+    max_frames = int(max_frames_value) if max_frames_value is not None else None
+    if imgsz <= 0 or (max_frames is not None and max_frames <= 0):
+        raise ValueError("imgsz must be positive and max_frames, when set, must be positive")
     if args.limit_sequences is not None and args.limit_sequences <= 0:
         raise ValueError("limit_sequences must be positive")
     strategy = inference_config.get("aggregation", "mean")
@@ -75,21 +79,24 @@ def main() -> None:
     frame_scores = []
     frame_truths = []
     frame_predictions = []
+    frame_groups = []
     sequence_scores = []
     sequence_truths = []
     sequence_predictions = []
     latencies = []
 
-    for sample in samples:
+    for index, sample in enumerate(samples):
         truth = binary_label(sample.raw_label, label_map)
         scores = []
-        for path in sample.frame_paths[:max_frames]:
+        frame_paths = sample.frame_paths if max_frames is None else sample.frame_paths[:max_frames]
+        for path in frame_paths:
             with Image.open(path) as image:
                 started = time.perf_counter()
                 score = predict_probs(model, image.convert("RGB"), imgsz=imgsz, device=device)
                 latencies.append((time.perf_counter() - started) * 1000.0)
             scores.append(score)
             frame_truths.append(truth)
+            frame_groups.append(index)
             frame_predictions.append(apply_threshold(score, threshold))
             frame_scores.append(score.tolist())
         aggregated = aggregate(scores, strategy)
@@ -109,10 +116,24 @@ def main() -> None:
             "sequences": len(samples),
             "frames": len(frame_scores),
             "weights": str(resolve_path(args.weights or config["model"]["weights"], ROOT)),
+            "preprocessing": inference_config.get("preprocessing", "letterbox"),
+            "dataset_manifest": str(config["data"]["manifest"]),
+            "dataset_manifest_sha256": hashlib.sha256(
+                resolve_path(config["data"]["manifest"], ROOT).read_bytes()
+            ).hexdigest(),
         },
         "metrics": compute_metrics(sequence_truths, sequence_predictions),
+        "metrics_ci95": metrics_intervals(sequence_truths, sequence_predictions),
         "frame_metrics": compute_metrics(frame_truths, frame_predictions),
+        "frame_metrics_ci95": cluster_bootstrap_intervals(
+            frame_truths,
+            frame_predictions,
+            frame_groups,
+            n_boot=args.n_bootstrap,
+            seed=int(config.get("seed", 42)),
+        ),
         "performance": performance_metrics(latencies),
+        "latencies_ms": [round(value, 4) for value in latencies],
         "scores": {
             "sequences": sequence_scores,
             "frames": frame_scores,

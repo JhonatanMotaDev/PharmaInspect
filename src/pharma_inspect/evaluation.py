@@ -249,15 +249,130 @@ def performance_metrics(latencies_ms: Sequence[float]) -> dict[str, float]:
     }
 
 
+def wilson_interval(successes: int, total: int, z: float = 1.96) -> list[float]:
+    """Intervalo de Wilson para uma proporção binomial.
+
+    Args:
+        successes (int): Quantidade de acertos.
+        total (int): Quantidade de ensaios.
+        z (float): Quantil normal; 1.96 corresponde a 95%.
+
+    Returns:
+        list[float]: ``[inferior, superior]``; ``[0, 1]`` quando ``total`` é zero.
+
+    Raises:
+        ValueError: Se ``successes`` estiver fora de ``[0, total]``.
+
+    Note:
+        Ao contrário do bootstrap, não degenera quando não há erros observados.
+    """
+    if total == 0:
+        return [0.0, 1.0]
+    if not 0 <= successes <= total:
+        raise ValueError("successes must be between 0 and total")
+    p = successes / total
+    denom = 1 + z**2 / total
+    center = (p + z**2 / (2 * total)) / denom
+    margin = z * np.sqrt(p * (1 - p) / total + z**2 / (4 * total**2)) / denom
+    return [float(max(0.0, center - margin)), float(min(1.0, center + margin))]
+
+
+def metrics_intervals(y_true: Sequence[int], y_pred: Sequence[int]) -> dict[str, list[float]]:
+    """Intervalos de Wilson de 95% para acurácia e recall por classe.
+
+    Args:
+        y_true (Sequence[int]): Rótulos binários de referência.
+        y_pred (Sequence[int]): Rótulos binários previstos.
+
+    Returns:
+        dict[str, list[float]]: Chaves ``accuracy``, ``recall_clean`` e
+            ``recall_contaminated``.
+
+    Raises:
+        ValueError: Se os vetores forem inválidos.
+    """
+    matrix = confusion_matrix(y_true, y_pred)
+    total = sum(sum(row) for row in matrix)
+    return {
+        "accuracy": wilson_interval(matrix[0][0] + matrix[1][1], total),
+        "recall_clean": wilson_interval(matrix[0][0], sum(matrix[0])),
+        "recall_contaminated": wilson_interval(matrix[1][1], sum(matrix[1])),
+    }
+
+
+def cluster_bootstrap_intervals(
+    y_true: Sequence[int],
+    y_pred: Sequence[int],
+    groups: Sequence[int],
+    *,
+    n_boot: int = 1000,
+    seed: int = 42,
+) -> dict[str, list[float]]:
+    """Bootstrap por grupo (sequência) para métricas por frame.
+
+    Args:
+        y_true (Sequence[int]): Rótulos por frame.
+        y_pred (Sequence[int]): Previsões por frame.
+        groups (Sequence[int]): Índice da sequência de cada frame.
+        n_boot (int): Número de reamostragens.
+        seed (int): Semente do gerador.
+
+    Returns:
+        dict[str, list[float]]: Percentis 2,5 e 97,5 de ``accuracy``,
+            ``recall_clean`` e ``recall_contaminated``.
+
+    Raises:
+        ValueError: Se os vetores forem inválidos, tiverem tamanhos diferentes
+            ou ``n_boot`` não for positivo.
+
+    Note:
+        Reamostrar sequências inteiras respeita a correlação entre frames do
+        mesmo frasco; reamostrar frames subestimaria a incerteza.
+    """
+    validate_binary(y_true, y_pred)
+    if len(groups) != len(y_true) or n_boot <= 0:
+        raise ValueError("groups must match the labels and n_boot must be positive")
+    truth = np.asarray(y_true)
+    pred = np.asarray(y_pred)
+    ids = np.asarray(groups)
+    unique = np.unique(ids)
+    table = np.array(
+        [
+            [
+                ((truth == 0) & (pred == 0) & (ids == g)).sum(),
+                ((truth == 0) & (ids == g)).sum(),
+                ((truth == 1) & (pred == 1) & (ids == g)).sum(),
+                ((truth == 1) & (ids == g)).sum(),
+            ]
+            for g in unique
+        ],
+        dtype=np.float64,
+    )
+    rng = np.random.default_rng(seed)
+    draws: dict[str, list[float]] = {"accuracy": [], "recall_clean": [], "recall_contaminated": []}
+    for _ in range(n_boot):
+        tn, neg, tp, pos = table[rng.integers(0, len(unique), len(unique))].sum(axis=0)
+        draws["accuracy"].append((tn + tp) / (neg + pos) if neg + pos else np.nan)
+        draws["recall_clean"].append(tn / neg if neg else np.nan)
+        draws["recall_contaminated"].append(tp / pos if pos else np.nan)
+    return {
+        name: [float(np.nanpercentile(v, 2.5)), float(np.nanpercentile(v, 97.5))]
+        for name, v in draws.items()
+    }
+
+
 __all__ = [
     "STRATEGIES",
     "aggregate",
     "apply_threshold",
     "compute_metrics",
+    "cluster_bootstrap_intervals",
     "confusion_matrix",
+    "metrics_intervals",
     "metrics_to_lines",
     "performance_metrics",
     "performance_to_lines",
     "validate_binary",
+    "wilson_interval",
     "write_json_report",
 ]
