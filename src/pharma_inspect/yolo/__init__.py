@@ -2,4 +2,4 @@
 
 from __future__ import annotations
 
-__all__ = ["dataset", "explain", "inference", "model", "training"]
+__all__ = ["dataset", "inference", "model", "training"]

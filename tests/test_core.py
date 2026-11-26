@@ -29,12 +29,8 @@ from pharma_inspect.evaluation import (
     wilson_interval,
 )
 from pharma_inspect.pipeline import load_config
-from pharma_inspect.vlm import build_client
-from pharma_inspect.vlm.prompts import build_prompt, system_prompt
-from pharma_inspect.visualization import overlay_activation
 from pharma_inspect.yolo import training as yolo_training
 from pharma_inspect.yolo.dataset import export_dataset, letterbox_geometry
-from pharma_inspect.yolo.explain import find_activation_module
 from pharma_inspect.yolo.inference import letterbox_preview, predict_batch, predict_probs
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -237,73 +233,12 @@ def test_predict_batch_keeps_input_order():
     assert scores.shape == (3, 2)
 
 
-def test_find_activation_module_skips_classifier_head():
-    """Seleciona o último bloco antes da cabeça de classificação."""
-    class Conv:
-        """Bloco convolucional sintético."""
-
-    class Classify:
-        """Cabeça sintética."""
-
-    class Sequential:
-        """Sequência sintética de módulos."""
-
-        def children(self):
-            return [Conv(), Classify()]
-
-    class Inner:
-        """Modelo interno sintético."""
-
-        model = Sequential()
-
-    class Outer:
-        """Wrapper sintético equivalente ao objeto YOLO."""
-
-        model = Inner()
-
-    assert isinstance(find_activation_module(Outer()), Conv)
-
-
-def test_overlay_activation_validates_and_resizes_map():
-    """Sobreposição de mapa 2D preserva o tamanho da imagem."""
-    image = Image.new("RGB", (8, 8), (10, 20, 30))
-    result = overlay_activation(image, np.ones((4, 4), dtype=np.float32), 0.5)
-    assert result.size == (8, 8)
-    assert result.mode == "RGB"
-    with pytest.raises(ValueError):
-        overlay_activation(image, np.zeros((4, 4, 1)))
-
-
-def test_vlm_is_disabled_by_default():
-    """Nenhum cliente é criado quando o VLM está desligado."""
-    assert build_client({"vlm": {"enabled": False}}) is None
-    with pytest.raises(RuntimeError):
-        build_client({"vlm": {"enabled": True, "provider": "openai"}})
-
-
-def test_vlm_prompt_reports_official_decision():
-    """O prompt sublinha que a classe oficial vem do YOLO."""
-    prompt = build_prompt(
-        {
-            "decision": {"label": "Contaminated"},
-            "final_scores": [0.1, 0.9],
-            "frames": 4,
-            "strategy": "mean",
-        }
-    )
-    assert "Contaminated" in prompt
-    assert "fonte oficial" in prompt
-    assert "sem alterar essa classe" in prompt
-    assert system_prompt
-
-
-def test_default_config_declares_yolo_and_disabled_vlm():
+def test_default_config_declares_yolo():
     """A configuração padrão descreve a arquitetura atual."""
     config = load_config(ROOT / "configs/default.yaml")
     assert config["model"]["family"] == "yolo"
     assert config["model"]["variant"] == "yolo11n-cls"
     assert config["model"]["imgsz"] == 1280
-    assert config["vlm"]["enabled"] is False
 
 
 def test_train_classifier_passes_dataset_directory(tmp_path, monkeypatch):
