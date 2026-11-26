@@ -4,5 +4,4 @@ PyYAML
 ultralytics==8.4.218
 torch>=2.15
 torchvision>=0.29
-streamlit
 pytest
