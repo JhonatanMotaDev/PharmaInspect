@@ -6,7 +6,7 @@ Usamos o **ResiDual** ([página oficial](https://ditto.ing.unimore.it/residual/)
 
 ## Reprodução
 
-O dataset não é versionado. Baixe o ZIP da página oficial e coloque em `data/raw/ResiDual_Dataset.zip`, descompactando em `data/raw/ResiDual_Dataset`. Depois, da raiz do repositório:
+O dataset não é versionado. Baixe o ZIP da página oficial e coloque em `data/raw/ResiDual_Dataset.zip`, descompactando em `data/raw/ResiDual_Dataset`. Não apague o ZIP: a verificação confere o hash dele. Depois, da raiz do repositório:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
